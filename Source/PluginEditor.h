@@ -17,6 +17,7 @@
 #include "UI/ReverbComponent.h"
 #include "UI/MeterComponent.h"
 #include "UI/Assets.h"
+#include <thread>
 
 //==============================================================================
 /**
@@ -47,5 +48,9 @@ private:
     juce::TextEditor promptBox;
     juce::TextButton sendButton{ "Enviar" };
 
+    // send the prompt text to the configured REST endpoint (runs network on background thread)
+    void sendPrompt();
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TapSynthAudioProcessorEditor)
 };
+

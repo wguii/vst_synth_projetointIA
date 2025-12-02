@@ -1,11 +1,3 @@
-/*
-  ==============================================================================
-
-    This file contains the basic framework code for a JUCE plugin processor.
-
-  ==============================================================================
-*/
-
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <algorithm>
@@ -345,172 +337,49 @@ void TapSynthAudioProcessor::setReverbParams()
     reverb.setParameters (reverbParams);
 }
 
-juce::String TapSynthAudioProcessor::getSystemPrompt()
+void TapSynthAudioProcessor::applyParametersFromJson (const juce::var& json)
 {
-    // We explain the synth architecture to Gemini so it generates valid values.
-    return R"(You are a synthesizer patch programmer for a Dual Oscillator Subtractive Synth.
-    
-    Available Parameters and their ranges:
-    - "OSC1", "OSC2" (Choice): 0=Sine, 1=Saw, 2=Square
-    - "OSC1GAIN", "OSC2GAIN" (Float): -40.0 to 0.2
-    - "OSC1PITCH", "OSC2PITCH" (Int): -48 to 48 (semitones)
-    - "OSC1FMFREQ", "OSC2FMFREQ" (Float): 0.0 to 1000.0 (Hz)
-    - "OSC1FMDEPTH", "OSC2FMDEPTH" (Float): 0.0 to 100.0
-    
-    - "FILTERTYPE" (Choice): 0=LowPass, 1=BandPass, 2=HighPass
-    - "FILTERCUTOFF" (Float): 20.0 to 20000.0 (Hz)
-    - "FILTERRESONANCE" (Float): 0.1 to 2.0
-    
-    - "ATTACK", "DECAY", "SUSTAIN", "RELEASE" (Amp Envelope): A/D/R 0.1-1.0/3.0, S 0.1-1.0
-    
-    - "FILTERADSRDEPTH" (Float): 0.0 to 10000.0
-    - "FILTERATTACK", "FILTERDECAY", "FILTERSUSTAIN", "FILTERRELEASE" (Filter Env)
-    
-    - "LFO1FREQ" (Float): 0.0 to 20.0 Hz
-    - "LFO1DEPTH" (Float): 0.0 to 10000.0
-    
-    - "REVERBSIZE", "REVERBWIDTH", "REVERBDAMPING", "REVERBFREEZE" (Float): 0.0 to 1.0
-    - "REVERBDRY", "REVERBWET" (Float): 0.0 to 1.0
-
-    INSTRUCTIONS:
-    1. Analyze the user's description of a sound (e.g., "warm pad", "laser zap").
-    2. Generate a JSON object where keys are the parameter names listed above and values are the settings to achieve that sound.
-    3. ONLY return the JSON. No markdown formatting, no explanations.
-    )";
-}
-
-void TapSynthAudioProcessor::sendPromptToAI(const juce::String& prompt)
-{
-    if (apiKey.isEmpty() || apiKey == "YOUR_GEMINI_API_KEY_HERE")
+    // Ensure this runs on the message thread (JUCE requirement for parameter Value updates)
+    if (! juce::MessageManager::getInstance()->isThisTheMessageThread())
     {
-        if (onStatusChange) onStatusChange(false, "API Key not set in Processor!");
-        return;
-    }
-
-    pool.addJob([this, prompt]()
+        juce::MessageManager::callAsync ([this, json]()
         {
-            // 1. Construct JSON Payload for Gemini API
-            juce::var systemPart;
-            systemPart.getDynamicObject()->setProperty("text", getSystemPrompt());
-
-            juce::var userPart;
-            userPart.getDynamicObject()->setProperty("text", "Create this sound: " + prompt);
-
-            // Gemini API structure: { contents: [{ parts: [{ text: ... }] }] }
-            // Note: For system instructions + user prompt, structure varies by model version.
-            // For gemini-1.5-flash, we can often just put system instructions in the prompt or use the system_instruction field.
-            // Simplest way for valid JSON: Combine them into one user message for zero-shot prompting.
-
-            juce::var textObj;
-            textObj.getDynamicObject()->setProperty("text", getSystemPrompt() + "\n\nUser Request: " + prompt);
-
-            juce::var partObj;
-            partObj.getDynamicObject()->setProperty("parts", juce::Array<juce::var>{ textObj });
-            partObj.getDynamicObject()->setProperty("role", "user");
-
-            juce::var contentArray;
-            contentArray.add(partObj);
-
-            juce::var mainObj;
-            mainObj.getDynamicObject()->setProperty("contents", contentArray);
-
-            // Safety settings (optional, but good to prevent blocks)
-            // Generation Config (Force JSON response mime type if supported, otherwise rely on prompt)
-
-            juce::String jsonPayload = juce::JSON::toString(mainObj);
-
-            // 2. Perform Network Request
-            juce::URL url("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey);
-
-            // Headers
-            juce::StringArray headers;
-            headers.add("Content-Type: application/json");
-
-            // Execute
-            auto options = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inPostData)
-                .withExtraHeaders(headers.joinIntoString("\r\n"));
-
-            std::unique_ptr<juce::InputStream> stream = url.withPOSTData(jsonPayload).createInputStream(options);
-
-            if (stream != nullptr)
-            {
-                auto response = stream->readEntireStreamAsString();
-                auto jsonResponse = extractJsonFromResponse(response);
-
-                // Pass back to Message Thread
-                juce::MessageManager::callAsync([this, jsonResponse]()
-                    {
-                        updateParametersFromJson(jsonResponse);
-                    });
-            }
-            else
-            {
-                juce::MessageManager::callAsync([this]()
-                    {
-                        if (onStatusChange) onStatusChange(false, "Network Error");
-                    });
-            }
+            applyParametersFromJson (json);
         });
-}
-
-juce::String TapSynthAudioProcessor::extractJsonFromResponse(const juce::String& response)
-{
-    // Gemini returns a complex JSON. We need: candidates[0].content.parts[0].text
-    juce::var parsed = juce::JSON::parse(response);
-
-    if (parsed.hasProperty("candidates"))
-    {
-        auto candidates = parsed["candidates"];
-        if (candidates.isArray() && candidates.size() > 0)
-        {
-            auto content = candidates[0]["content"];
-            auto parts = content["parts"];
-            if (parts.isArray() && parts.size() > 0)
-            {
-                juce::String rawText = parts[0]["text"].toString();
-
-                // Strip Markdown code fences if present (e.g. ```json ... ```)
-                rawText = rawText.replace("```json", "", true);
-                rawText = rawText.replace("```", "");
-                return rawText.trim();
-            }
-        }
-    }
-    return "{}";
-}
-
-void TapSynthAudioProcessor::updateParametersFromJson(const juce::String& jsonString)
-{
-    juce::var parsedJson = juce::JSON::parse(jsonString);
-
-    if (!parsedJson.isObject())
-    {
-        if (onStatusChange) onStatusChange(false, "Failed to parse AI response");
         return;
     }
 
-    auto* obj = parsedJson.getDynamicObject();
-    auto properties = obj->getProperties();
-
-    for (auto& prop : properties)
+    // Must be a JSON object
+    auto* obj = json.getDynamicObject();
+    if (obj == nullptr)
     {
-        juce::String paramID = prop.name.toString();
-        float value = (float)prop.value;
-
-        // Find parameter in APVTS
-        auto* param = apvts.getParameter(paramID);
-
-        if (param != nullptr)
-        {
-            if (auto* rangedParam = dynamic_cast<juce::RangedAudioParameter*>(param))
-            {
-                // IMPORTANT: setValueNotifyingHost expects a normalized value (0.0 - 1.0)
-                // But the AI returns the real value (e.g., 500Hz).
-                // We must convert Real -> Normalized.
-                float normalizedValue = rangedParam->convertTo0to1(value);
-                rangedParam->setValueNotifyingHost(normalizedValue);
-            }
-        }
+        DBG("JSON is not an object.");
+        return;
     }
 
-    if (onStatusChange) onStatusChange(true, "Patch generated!");
+    auto& props = obj->getProperties();
+
+    // Iterate safely over name/value pairs
+    for (auto& entry : props)
+    {
+        juce::String id = entry.name.toString();
+        const juce::var& value = entry.value;
+
+        // JUCE 8 requirement: check parameter existence using getParameter()
+        if (auto* param = apvts.getParameter(id))
+        {
+            // Get bound Value object for the parameter
+            juce::Value paramValue = apvts.getParameterAsValue(id);
+
+            // Assign JSON value (JUCE handles var type conversion)
+            paramValue.setValue(value);
+        }
+        else
+        {
+            DBG("Unknown parameter id from JSON: " << id);
+        }
+    }
+}
+
+
+

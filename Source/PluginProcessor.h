@@ -60,11 +60,10 @@ public:
     const std::atomic<float>& getPeak() { return meter.getPeak(); }
     juce::AudioProcessorValueTreeState apvts;
 
-    void sendPromptToAI(const juce::String& prompt);
-    void updateParametersFromJson(const juce::String& jsonString);
-
-    std::function<void(bool success, const juce::String& message)> onStatusChange;
-
+    /** Apply a JSON object (mapping of parameter ID -> value) into the APVTS.
+        This must be safe to call from the message thread; it is invoked that way.
+    */
+    void applyParametersFromJson (const juce::var& json);
 
 private:
     static constexpr int numChannelsToProcess { 2 };
@@ -80,14 +79,8 @@ private:
     juce::dsp::Reverb reverb;
     juce::Reverb::Parameters reverbParams;
     MeterData meter;
-
-    juce::String getSystemPrompt();
-    juce::String extractJsonFromResponse(const juce::String& response);
-
-    juce::ThreadPool pool{ 1 };
-
-    const juce::String apiKey = "test";
     
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TapSynthAudioProcessor)
 };
+
