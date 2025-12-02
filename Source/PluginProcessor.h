@@ -60,9 +60,6 @@ public:
     const std::atomic<float>& getPeak() { return meter.getPeak(); }
     juce::AudioProcessorValueTreeState apvts;
 
-    /** Apply a JSON object (mapping of parameter ID -> value) into the APVTS.
-        This must be safe to call from the message thread; it is invoked that way.
-    */
     void applyParametersFromJson (const juce::var& json);
 
 private:

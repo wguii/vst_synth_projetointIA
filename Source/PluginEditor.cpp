@@ -115,7 +115,7 @@ void TapSynthAudioProcessorEditor::sendPrompt()
     }
 
     const juce::String apiKey   = "";
-    const juce::String modelId  = "gemini-flash-latest"; // or "gemini-2.5-flash"
+    const juce::String modelId  = "gemini-flash-latest"; // HERE HERE HERE "gemini-2.5-flash" if things go bad
     const juce::String endpoint =
         "https://generativelanguage.googleapis.com/v1beta/models/"
         + modelId
@@ -222,7 +222,6 @@ void TapSynthAudioProcessorEditor::sendPrompt()
             headers << "Content-Type: application/json\r\n";
             headers << "x-goog-api-key: " << apiKey << "\r\n";
 
-            // FIX: Create InputStreamOptions in ONE expression — no assignment!
             std::unique_ptr<juce::InputStream> stream =
                 url.withPOSTData(body)
                    .createInputStream(
@@ -246,8 +245,7 @@ void TapSynthAudioProcessorEditor::sendPrompt()
         {
             errorMsg = "Unknown network error.";
         }
-
-        // --- Back to UI thread ---
+        
         juce::MessageManager::callAsync([this, &processor, responseBody, errorMsg]()
         {
             sendButton.setEnabled(true);
@@ -274,7 +272,6 @@ void TapSynthAudioProcessorEditor::sendPrompt()
                 return;
             }
 
-            // Extract Gemini return text
             auto* root = parsed.getDynamicObject();
             auto candidates = root->getProperty("candidates");
 

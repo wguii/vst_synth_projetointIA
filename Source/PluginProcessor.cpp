@@ -339,7 +339,6 @@ void TapSynthAudioProcessor::setReverbParams()
 
 void TapSynthAudioProcessor::applyParametersFromJson (const juce::var& json)
 {
-    // Ensure this runs on the message thread (JUCE requirement for parameter Value updates)
     if (! juce::MessageManager::getInstance()->isThisTheMessageThread())
     {
         juce::MessageManager::callAsync ([this, json]()
@@ -359,19 +358,15 @@ void TapSynthAudioProcessor::applyParametersFromJson (const juce::var& json)
 
     auto& props = obj->getProperties();
 
-    // Iterate safely over name/value pairs
     for (auto& entry : props)
     {
         juce::String id = entry.name.toString();
         const juce::var& value = entry.value;
 
-        // JUCE 8 requirement: check parameter existence using getParameter()
         if (auto* param = apvts.getParameter(id))
         {
-            // Get bound Value object for the parameter
             juce::Value paramValue = apvts.getParameterAsValue(id);
 
-            // Assign JSON value (JUCE handles var type conversion)
             paramValue.setValue(value);
         }
         else
