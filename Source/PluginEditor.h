@@ -44,6 +44,8 @@ private:
     AdsrComponent filterAdsr;
     ReverbComponent reverb;
     MeterComponent meter;
+    juce::TextEditor promptBox;
+    juce::TextButton sendButton{ "Enviar" };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TapSynthAudioProcessorEditor)
 };

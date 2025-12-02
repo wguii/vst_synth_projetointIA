@@ -31,12 +31,51 @@ TapSynthAudioProcessorEditor::TapSynthAudioProcessorEditor (TapSynthAudioProcess
     addAndMakeVisible (filterAdsr);
     addAndMakeVisible (reverb);
     addAndMakeVisible (meter);
+    addAndMakeVisible(promptBox);
+    addAndMakeVisible(sendButton);
     
+
+    promptBox.setMultiLine(false);
+    promptBox.setReturnKeyStartsNewLine(false);
+    promptBox.setTextToShowWhenEmpty("Descreva um timbre...", juce::Colours::grey);
+    promptBox.setColour(juce::TextEditor::backgroundColourId, juce::Colours::darkgrey.withAlpha(0.2f));
+    promptBox.setColour(juce::TextEditor::textColourId, juce::Colours::white);
+    promptBox.setColour(juce::TextEditor::outlineColourId, juce::Colours::darkgrey);
+
+
+    // Setup Button Logic
+    sendButton.onClick = [this]()
+        {
+            juce::String userPrompt = promptBox.getText();
+            if (userPrompt.isNotEmpty())
+            {
+                sendButton.setEnabled(false); // Prevent double clicks
+                sendButton.setButtonText("Gerando...");
+                audioProcessor.sendPromptToAI(userPrompt);
+            }
+        };
+
+    // Setup Feedback Callback
+    // We bind this callback so the Processor can talk back to the Editor safely
+    audioProcessor.onStatusChange = [this](bool success, const juce::String& msg)
+        {
+            sendButton.setEnabled(true);
+            sendButton.setButtonText("Enviar");
+
+            if (!success)
+            {
+                // Optional: Show an alert window or change button color to red briefly
+                juce::NativeMessageBox::showMessageBoxAsync(juce::AlertWindow::WarningIcon, "Erro na IA", msg);
+            }
+        };
+
+
+
     osc1.setName ("Oscillator 1");
     osc2.setName ("Oscillator 2");
-    filter.setName ("Filter");
-    lfo1.setName ("Filter LFO");
-    filterAdsr.setName ("Filter ADSR");
+    filter.setName ("Filtro");
+    lfo1.setName ("Filtro LFO");
+    filterAdsr.setName ("Filtro ADSR");
     adsr.setName ("ADSR");
     meter.setName ("Meter");
     
@@ -52,11 +91,12 @@ TapSynthAudioProcessorEditor::TapSynthAudioProcessorEditor (TapSynthAudioProcess
         
     
     startTimerHz (30);
-    setSize (1080, 525);
+    setSize (1066, 600);
 }
 
 TapSynthAudioProcessorEditor::~TapSynthAudioProcessorEditor()
 {
+    audioProcessor.onStatusChange = nullptr;
     stopTimer();
 }
 
@@ -68,8 +108,17 @@ void TapSynthAudioProcessorEditor::paint (juce::Graphics& g)
 
 void TapSynthAudioProcessorEditor::resized()
 {
+    auto bounds = getLocalBounds();
+
+    auto bottomArea = bounds.removeFromBottom(80);
+    bottomArea = bottomArea.reduced(0, 9);
+
+    promptBox.setBounds(bottomArea.removeFromLeft(bottomArea.getWidth() - 80).reduced(5));
+    sendButton.setBounds(bottomArea.reduced(5));
+
     const auto oscWidth = 420;
     const auto oscHeight = 180;
+
     osc1.setBounds (0, 0, oscWidth, oscHeight);
     osc2.setBounds (0, osc1.getBottom(), oscWidth, oscHeight);
     filter.setBounds (osc1.getRight(), 0, 180, 200);

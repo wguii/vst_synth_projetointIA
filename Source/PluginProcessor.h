@@ -60,6 +60,12 @@ public:
     const std::atomic<float>& getPeak() { return meter.getPeak(); }
     juce::AudioProcessorValueTreeState apvts;
 
+    void sendPromptToAI(const juce::String& prompt);
+    void updateParametersFromJson(const juce::String& jsonString);
+
+    std::function<void(bool success, const juce::String& message)> onStatusChange;
+
+
 private:
     static constexpr int numChannelsToProcess { 2 };
     juce::Synthesiser synth;
@@ -74,6 +80,13 @@ private:
     juce::dsp::Reverb reverb;
     juce::Reverb::Parameters reverbParams;
     MeterData meter;
+
+    juce::String getSystemPrompt();
+    juce::String extractJsonFromResponse(const juce::String& response);
+
+    juce::ThreadPool pool{ 1 };
+
+    const juce::String apiKey = "test";
     
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TapSynthAudioProcessor)
