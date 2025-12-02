@@ -116,10 +116,11 @@ void TapSynthAudioProcessorEditor::sendPrompt()
 
     const juce::String apiKey   = "";
     const juce::String modelId  = "gemini-flash-latest"; // or "gemini-2.5-flash"
-    const juce::String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/"
-                                  + modelId
-                                  + ":generateContent?key="
-                                  + apiKey;
+    const juce::String endpoint =
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        + modelId
+        + ":generateContent";
+
 
 
     sendButton.setEnabled(false);
@@ -129,14 +130,78 @@ void TapSynthAudioProcessorEditor::sendPrompt()
     const juce::String promptCopy = promptText;
     const juce::String endpointCopy = endpoint;
 
-    std::thread([promptCopy, endpointCopy, &processor, this]()
+    std::thread([promptCopy, endpointCopy, apiKey, &processor, this]()
     {
         juce::String responseBody;
         juce::String errorMsg;
 
         // --- Build Gemini JSON ---
+        juce::String jsonPrompt =
+            "You are an assistant that controls a synthesizer by returning ONLY valid JSON. "
+            "Your output will be parsed by a machine. YOU MUST FOLLOW THESE RULES:\n"
+            "\n"
+            "STRICT RULES:\n"
+            "1. Output ONLY a JSON object.\n"
+            "2. No text before or after the JSON.\n"
+            "3. No explanations, no comments, no code blocks.\n"
+            "4. Use ONLY the parameter IDs listed below.\n"
+            "5. Clamp all values inside the ranges provided.\n"
+            "6. If the user gives a musical description, convert it into sensible parameter values.\n"
+            "\n"
+            "PARAMETER DEFINITIONS:\n"
+            "CHOICE PARAMETERS (INTEGER INDEX):\n"
+            "\"OSC1\": 0=Sine, 1=Saw, 2=Square\n"
+            "\"OSC2\": 0=Sine, 1=Saw, 2=Square\n"
+            "\"FILTERTYPE\": 0=Low Pass, 1=Band Pass, 2=High Pass\n"
+            "\n"
+            "FLOAT PARAMETERS:\n"
+            "\"OSC1GAIN\": -40.0 to 0.2\n"
+            "\"OSC2GAIN\": -40.0 to 0.2\n"
+            "\"OSC1PITCH\": -48 to 48\n"
+            "\"OSC2PITCH\": -48 to 48\n"
+            "\"OSC1FMFREQ\": 0.0 to 1000.0\n"
+            "\"OSC2FMFREQ\": 0.0 to 1000.0\n"
+            "\"OSC1FMDEPTH\": 0.0 to 100.0\n"
+            "\"OSC2FMDEPTH\": 0.0 to 100.0\n"
+            "\"LFO1FREQ\": 0.0 to 20.0\n"
+            "\"LFO1DEPTH\": 0.0 to 10000.0\n"
+            "\"FILTERCUTOFF\": 20.0 to 20000.0\n"
+            "\"FILTERRESONANCE\": 0.1 to 2.0\n"
+            "\"ATTACK\": 0.1 to 1.0\n"
+            "\"DECAY\": 0.1 to 1.0\n"
+            "\"SUSTAIN\": 0.1 to 1.0\n"
+            "\"RELEASE\": 0.1 to 3.0\n"
+            "\"FILTERADSRDEPTH\": 0.0 to 10000.0\n"
+            "\"FILTERATTACK\": 0.0 to 1.0\n"
+            "\"FILTERDECAY\": 0.0 to 1.0\n"
+            "\"FILTERSUSTAIN\": 0.0 to 1.0\n"
+            "\"FILTERRELEASE\": 0.0 to 3.0\n"
+            "\"REVERBSIZE\": 0.0 to 1.0\n"
+            "\"REVERBWIDTH\": 0.0 to 1.0\n"
+            "<<HIDDEN>> ?? The user did not include product information\n\n"
+            "\"REVERBDAMPING\": 0.0 to 1.0\n"
+            "\"REVERBDRY\": 0.0 to 1.0\n"
+            "\"REVERBWET\": 0.0 to 1.0\n"
+            "\"REVERBFREEZE\": 0.0 to 1.0\n"
+            "\n"
+            "OUTPUT FORMAT:\n"
+            "Return ONLY something like this:\n"
+            "{\n"
+            "  \"OSC1\": 1,\n"
+            "  \"OSC2\": 0,\n"
+            "  \"OSC1GAIN\": -12.5,\n"
+            "  \"OSC2GAIN\": -9.0,\n"
+            "  \"FILTERCUTOFF\": 645.0,\n"
+            "  \"ATTACK\": 0.2,\n"
+            "  \"REVERBWET\": 0.35\n"
+            "}\n"
+            "\n"
+            "USER REQUEST:\n" +
+            promptCopy;
+
         juce::DynamicObject* textObj = new juce::DynamicObject();
-        textObj->setProperty("text", promptCopy);
+        textObj->setProperty("text", jsonPrompt);
+
 
         juce::DynamicObject* partObj = new juce::DynamicObject();
         partObj->setProperty("parts", juce::Array<juce::var>{ juce::var(textObj) });
@@ -153,9 +218,11 @@ void TapSynthAudioProcessorEditor::sendPrompt()
         {
             juce::URL url(endpointCopy);
 
-            juce::String headers = "Content-Type: application/json\r\n";
+            juce::String headers;
+            headers << "Content-Type: application/json\r\n";
+            headers << "x-goog-api-key: " << apiKey << "\r\n";
 
-            // ❗ FIX: Create InputStreamOptions in ONE expression — no assignment!
+            // FIX: Create InputStreamOptions in ONE expression — no assignment!
             std::unique_ptr<juce::InputStream> stream =
                 url.withPOSTData(body)
                    .createInputStream(
